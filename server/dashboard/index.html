@@ -28,6 +28,7 @@ table{width:100%;border-collapse:collapse;font-size:14px}th,td{text-align:left;p
 </main>
 <script>
 const $=id=>document.getElementById(id);
+$("api").value=window.location.origin;
 const safe=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 async function load(){
  const base=$("api").value.trim().replace(/\/+$/,""),token=$("token").value;
