@@ -1,0 +1,11 @@
+{
+  "api_base_url": "https://YOUR-RENDER-SERVICE.onrender.com",
+  "enrollment_code": "CHANGE-THIS-TO-YOUR-ENROLLMENT-CODE",
+  "device_name": "OFFICE-PC-01",
+  "employee_name": "Employee Name",
+  "approved_work_folders": [
+    "C:\\Users\\Public\\Documents\\CompanyWork"
+  ],
+  "heartbeat_seconds": 60,
+  "app_sample_seconds": 60
+}
