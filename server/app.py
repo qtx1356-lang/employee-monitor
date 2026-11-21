@@ -10,6 +10,13 @@ from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./employee_monitor.db")
+# Use the installed Psycopg 3 driver for PostgreSQL URLs.
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+psycopg://", 1)
+elif DATABASE_URL.startswith("postgresql://"):
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg://", 1)
+elif DATABASE_URL.startswith("postgresql+psycopg2://"):
+    DATABASE_URL = DATABASE_URL.replace("postgresql+psycopg2://", "postgresql+psycopg://", 1)
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "dev-admin-change-me")
 ENROLLMENT_CODE = os.getenv("ENROLLMENT_CODE", "dev-enroll-change-me")
 
