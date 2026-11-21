@@ -4,6 +4,8 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional
 
 from fastapi import FastAPI, Header, HTTPException, Depends
+from fastapi.responses import FileResponse
+from pathlib import Path
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, Text, ForeignKey
@@ -48,6 +50,12 @@ class Activity(Base):
 
 Base.metadata.create_all(bind=engine)
 app = FastAPI(title="Employee Monitor API", version="1.0.0")
+
+DASHBOARD_FILE = Path(__file__).resolve().parent / "dashboard" / "index.html"
+
+@app.get("/", include_in_schema=False)
+def dashboard():
+    return FileResponse(DASHBOARD_FILE)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Restrict to your dashboard domain in production.
