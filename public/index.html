@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Employee Monitor - Admin</title>
+<style>
+:root{font-family:Arial,sans-serif;color:#172033;background:#f4f6fa}
+body{margin:0;padding:24px}main{max-width:1100px;margin:auto}
+h1{margin-bottom:6px}.muted{color:#657087}
+.panel{background:white;border:1px solid #e2e7ef;border-radius:12px;padding:18px;margin:16px 0}
+input,button{font:inherit;padding:11px;border-radius:8px;border:1px solid #ccd4e0}
+input{max-width:100%;width:340px}button{background:#2457d6;color:white;border:0;cursor:pointer}
+.stats{display:flex;gap:12px;flex-wrap:wrap}.stat{background:#f1f5ff;padding:14px 20px;border-radius:10px;min-width:120px}
+table{width:100%;border-collapse:collapse;font-size:14px}th,td{text-align:left;padding:10px;border-bottom:1px solid #edf0f5;overflow-wrap:anywhere}
+.wrap{overflow-x:auto}.error{color:#b42318}.ok{color:#067647}
+</style>
+</head>
+<body><main>
+<h1>Employee Monitor</h1><p class="muted">Company-device activity dashboard. Use only with employee notice and authorization.</p>
+<section class="panel">
+<label>API URL<br><input id="api" value="" placeholder="API URL"></label><br><br>
+<label>Admin token<br><input id="token" type="password" autocomplete="off" placeholder="Enter ADMIN_TOKEN"></label><br><br>
+<button id="load">Load dashboard</button><p id="message" class="muted"></p>
+</section>
+<section class="panel"><h2>Device overview</h2><div id="stats" class="stats">Not loaded</div><div class="wrap"><table><thead><tr><th>Employee</th><th>Device</th><th>Status</th><th>Last seen</th></tr></thead><tbody id="devices"></tbody></table></div></section>
+<section class="panel"><h2>Recent activity</h2><div class="wrap"><table><thead><tr><th>Time</th><th>Employee</th><th>Event</th><th>Application</th><th>File name</th><th>Details</th></tr></thead><tbody id="activities"></tbody></table></div></section>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+$("api").value=window.location.origin;
+const safe=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+async function load(){
+ const base=$("api").value.trim().replace(/\/+$/,""),token=$("token").value;
+ if(!base||!token){$("message").textContent="Enter the API URL and admin token.";return}
+ $("message").textContent="Loading…";$("message").className="muted";
+ try{
+  const headers={Authorization:"Bearer "+token};
+  const [o,a]=await Promise.all([fetch(base+"/api/admin/overview",{headers}),fetch(base+"/api/admin/activities?limit=100",{headers})]);
+  if(!o.ok||!a.ok)throw new Error("API error ("+o.status+"/"+a.status+"). Check URL or admin token.");
+  const overview=await o.json(),activities=await a.json();
+  $("stats").innerHTML=[["Registered",overview.registered],["Online",overview.online],["Offline",overview.offline]].map(x=>'<div class="stat"><div class="muted">'+safe(x[0])+'</div><strong>'+safe(x[1])+'</strong></div>').join("");
+  $("devices").innerHTML=overview.devices.map(d=>"<tr><td>"+safe(d.employee_name)+"</td><td>"+safe(d.device_name)+"</td><td>"+safe(d.status)+"</td><td>"+safe(d.last_seen||"Never")+"</td></tr>").join("")||"<tr><td colspan=4>No devices enrolled</td></tr>";
+  $("activities").innerHTML=activities.map(x=>"<tr><td>"+safe(x.occurred_at)+"</td><td>"+safe(x.employee)+"</td><td>"+safe(x.event_type)+"</td><td>"+safe(x.app_name)+"</td><td>"+safe(x.file_name)+"</td><td>"+safe(x.details)+"</td></tr>").join("")||"<tr><td colspan=6>No activity recorded</td></tr>";
+  $("message").textContent="Dashboard updated."; $("message").className="ok";
+ }catch(e){$("message").textContent=e.message;$("message").className="error"}
+}
+$("load").addEventListener("click",load);
+</script></body></html>
