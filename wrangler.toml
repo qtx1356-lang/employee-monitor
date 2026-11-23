@@ -9,5 +9,5 @@ binding = "ASSETS"
 [[d1_databases]]
 binding = "DB"
 database_name = "employee-monitor-db"
-database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+database_id = "a070023a-8aac-4b47-8852-ae5e949d92e9"
 migrations_dir = "migrations"
