@@ -101,6 +101,48 @@ async function handleApi(request: Request, env: Env): Promise<Response> {
     }
   }
 
+
+  if (method === "POST" && path === "/api/session") {
+    const device = await activeDevice(request, env);
+    if (!device) return json({ detail: "Unknown, missing, or revoked device token." }, 401);
+    let body: any;
+    try { body = await request.json(); } catch { return json({ detail: "Invalid JSON body." }, 400); }
+    if (!body || !validText(body.session_id, 100) || !["start", "tick", "end"].includes(body.action)) {
+      return json({ detail: "session_id and action (start, tick, end) are required." }, 422);
+    }
+    const now = new Date().toISOString();
+    if (body.action === "start") {
+      const started = body.started_at && !Number.isNaN(Date.parse(body.started_at)) ? new Date(body.started_at).toISOString() : now;
+      await env.DB.prepare(
+        "INSERT OR IGNORE INTO employee_sessions (id, device_id, started_at, last_activity_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
+      ).bind(body.session_id, device.id, started, started, now, now).run();
+      await env.DB.prepare("UPDATE devices SET last_seen = ? WHERE id = ?").bind(now, device.id).run();
+      return json({ ok: true, session_id: body.session_id });
+    }
+    const session = await env.DB.prepare(
+      "SELECT id FROM employee_sessions WHERE id = ? AND device_id = ? AND ended_at IS NULL"
+    ).bind(body.session_id, device.id).first();
+    if (!session) return json({ detail: "Active session not found." }, 404);
+    if (body.action === "tick") {
+      const active = Number.isInteger(body.active_seconds) ? Math.max(0, Math.min(body.active_seconds, 120)) : 0;
+      const idle = Number.isInteger(body.idle_seconds) ? Math.max(0, Math.min(body.idle_seconds, 120)) : 0;
+      const activityAt = body.last_activity_at && !Number.isNaN(Date.parse(body.last_activity_at)) ? new Date(body.last_activity_at).toISOString() : now;
+      await env.DB.batch([
+        env.DB.prepare("UPDATE employee_sessions SET active_seconds = active_seconds + ?, idle_seconds = idle_seconds + ?, last_activity_at = ?, updated_at = ? WHERE id = ? AND device_id = ? AND ended_at IS NULL")
+          .bind(active, idle, activityAt, now, body.session_id, device.id),
+        env.DB.prepare("UPDATE devices SET last_seen = ? WHERE id = ?").bind(now, device.id)
+      ]);
+      return json({ ok: true });
+    }
+    const ended = body.ended_at && !Number.isNaN(Date.parse(body.ended_at)) ? new Date(body.ended_at).toISOString() : now;
+    const reason = validText(body.end_reason, 40) ? body.end_reason.slice(0, 40) : "user_logoff";
+    await env.DB.prepare(
+      "UPDATE employee_sessions SET ended_at = ?, end_reason = ?, updated_at = ? WHERE id = ? AND device_id = ? AND ended_at IS NULL"
+    ).bind(ended, reason, now, body.session_id, device.id).run();
+    await env.DB.prepare("UPDATE devices SET last_seen = ? WHERE id = ?").bind(now, device.id).run();
+    return json({ ok: true });
+  }
+
   if (method === "POST" && (path === "/api/heartbeat" || path === "/api/events")) {
     const device = await activeDevice(request, env);
     if (!device) return json({ detail: "Unknown, missing, or revoked device token." }, 401);
@@ -161,6 +203,25 @@ async function handleApi(request: Request, env: Env): Promise<Response> {
         devices,
         pending: pendingRows.results
       });
+    }
+
+
+    if (method === "GET" && path === "/api/admin/sessions") {
+      const date = url.searchParams.get("date") || new Date().toISOString().slice(0, 10);
+      if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(date)) return json({ detail: "date must be YYYY-MM-DD." }, 422);
+      const rows = await env.DB.prepare(
+        "SELECT s.id, d.employee_name, d.device_name, s.started_at, s.ended_at, s.active_seconds, s.idle_seconds, s.end_reason FROM employee_sessions s JOIN devices d ON d.id = s.device_id WHERE substr(s.started_at, 1, 10) = ? ORDER BY s.started_at DESC"
+      ).bind(date).all();
+      const sessions = rows.results;
+      const totals = sessions.reduce((acc: any, s: any) => {
+        const start = Date.parse(String(s.started_at));
+        const end = s.ended_at ? Date.parse(String(s.ended_at)) : Date.now();
+        acc.session_seconds += Math.max(0, Math.floor((end - start) / 1000));
+        acc.active_seconds += Number(s.active_seconds || 0);
+        acc.idle_seconds += Number(s.idle_seconds || 0);
+        return acc;
+      }, { session_seconds: 0, active_seconds: 0, idle_seconds: 0 });
+      return json({ date, totals, sessions });
     }
 
     if (method === "GET" && path === "/api/admin/activities") {
