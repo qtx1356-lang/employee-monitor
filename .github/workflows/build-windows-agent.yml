@@ -1,0 +1,45 @@
+name: Build Windows Agent
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - cloudflare-migration
+    paths:
+      - "agent/**"
+      - ".github/workflows/build-windows-agent.yml"
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python for packaging
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install agent dependencies and PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r agent/requirements.txt
+          python -m pip install pyinstaller
+
+      - name: Package standalone executable
+        working-directory: agent
+        run: |
+          pyinstaller --noconfirm --clean --onedir --console --name EmployeeMonitorAgent --collect-all watchdog --hidden-import win32timezone agent.py
+          Copy-Item config.example.json dist/EmployeeMonitorAgent/config.example.json
+          Copy-Item run-agent.bat dist/EmployeeMonitorAgent/run-agent.bat
+          Copy-Item README-WINDOWS.md dist/EmployeeMonitorAgent/README-WINDOWS.md
+          Compress-Archive -Path dist/EmployeeMonitorAgent -DestinationPath dist/employee-monitor-windows.zip -Force
+
+      - name: Upload standalone Windows ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: employee-monitor-windows
+          path: agent/dist/employee-monitor-windows.zip
+          if-no-files-found: error
+          retention-days: 30
