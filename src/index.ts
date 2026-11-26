@@ -1,7 +1,8 @@
 export interface Env {
   DB: D1Database;
   ASSETS: Fetcher;
-  ADMIN_TOKEN: string;
+  ADMIN_TOKEN?: string;
+  DASHBOARD_KEY: string;
   ENROLLMENT_CODE: string;
 }
 
@@ -46,8 +47,9 @@ function bearer(request: Request): string {
 }
 
 async function adminOK(request: Request, env: Env): Promise<boolean> {
-  if (!env.ADMIN_TOKEN || env.ADMIN_TOKEN.length < 24) return false;
-  return secureEqual(bearer(request), env.ADMIN_TOKEN);
+  const supplied = request.headers.get("X-Dashboard-Key") || "";
+  if (!env.DASHBOARD_KEY || env.DASHBOARD_KEY.length < 32) return false;
+  return secureEqual(supplied, env.DASHBOARD_KEY);
 }
 
 async function activeDevice(request: Request, env: Env): Promise<Device | null> {
@@ -265,7 +267,7 @@ function corsHeaders(request: Request): HeadersInit {
   const origin = request.headers.get("Origin");
   const headers: Record<string, string> = {
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Authorization, Content-Type, X-Device-Token",
+    "Access-Control-Allow-Headers": "Authorization, Content-Type, X-Device-Token, X-Dashboard-Key",
     "Access-Control-Max-Age": "86400",
     "Vary": "Origin"
   };
@@ -282,6 +284,23 @@ export default {
       for (const [key, value] of Object.entries(corsHeaders(request))) headers.set(key, value);
       return new Response(response.body, { status: response.status, headers });
     }
-    return env.ASSETS.fetch(request);
+
+    // The dashboard is available only through its private, unguessable URL.
+    // The same key is checked again on every admin API request.
+    if (url.pathname === "/" || url.pathname === "/index.html") {
+      return new Response("Not found", { status: 404, headers: { "Cache-Control": "no-store" } });
+    }
+    if (url.pathname.startsWith("/admin/")) {
+      const match = url.pathname.match(/^\/admin\/([^/]+)\/?$/);
+      const supplied = match ? decodeURIComponent(match[1]) : "";
+      if (!env.DASHBOARD_KEY || env.DASHBOARD_KEY.length < 32 || !secureEqual(supplied, env.DASHBOARD_KEY)) {
+        return new Response("Not found", { status: 404, headers: { "Cache-Control": "no-store" } });
+      }
+      const assetUrl = new URL(request.url);
+      assetUrl.pathname = "/";
+      assetUrl.search = "";
+      return env.ASSETS.fetch(new Request(assetUrl.toString(), { method: "GET", headers: { "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" } }));
+    }
+    return new Response("Not found", { status: 404, headers: { "Cache-Control": "no-store" } });
   }
 };
