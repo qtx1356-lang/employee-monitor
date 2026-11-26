@@ -15,7 +15,16 @@ if (-not (Test-Path (Join-Path $source "config.json"))) {
 }
 
 New-Item -ItemType Directory -Path $installRoot -Force | Out-Null
-Copy-Item (Join-Path $source "*") $installRoot -Recurse -Force
+
+# The installer may be launched directly from the installed folder.
+# Avoid copying a directory onto itself (which causes Copy-Item errors).
+$sourceFull = [System.IO.Path]::GetFullPath($source).TrimEnd('\', '/')
+$installFull = [System.IO.Path]::GetFullPath($installRoot).TrimEnd('\', '/')
+if (-not [string]::Equals($sourceFull, $installFull, [System.StringComparison]::OrdinalIgnoreCase)) {
+    Copy-Item (Join-Path $source "*") $installRoot -Recurse -Force
+} else {
+    Write-Host "Installer is already in the installation folder; skipping file copy."
+}
 if (-not (Test-Path (Join-Path $installRoot "config.json"))) {
     throw "config.json was not copied. Installation stopped."
 }
