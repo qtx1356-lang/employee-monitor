@@ -297,7 +297,7 @@ export default {
         return new Response("Not found", { status: 404, headers: { "Cache-Control": "no-store" } });
       }
       const assetUrl = new URL(request.url);
-      assetUrl.pathname = "/";
+      assetUrl.pathname = "/index.html";
       assetUrl.search = "";
       const assetResponse = await env.ASSETS.fetch(new Request(assetUrl.toString(), { method: "GET" }));
       const assetHeaders = new Headers(assetResponse.headers);
