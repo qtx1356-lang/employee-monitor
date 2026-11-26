@@ -33,6 +33,7 @@ $userPrincipal = New-ScheduledTaskPrincipal -UserId $currentUser -LogonType Inte
 Register-ScheduledTask -TaskName "EmployeeMonitor-UserSession" -Action $userAction -Trigger $userTrigger -Principal $userPrincipal -Settings $taskSettings -Description "Visible Employee Monitor user-session component; detects foreground application process names." -Force | Out-Null
 
 Start-ScheduledTask -TaskName "EmployeeMonitor-BootHeartbeat"
+Start-Sleep -Seconds 5
 Start-ScheduledTask -TaskName "EmployeeMonitor-UserSession"
 
 Write-Host ""
