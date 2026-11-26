@@ -42,6 +42,22 @@ def get_foreground_process_name():
     except (OSError, psutil.Error, AttributeError, ValueError):
         return None
 
+def get_idle_seconds():
+    """Seconds since last keyboard/mouse input in the current interactive session."""
+    if os.name != "nt":
+        return 0
+    class LASTINPUTINFO(ctypes.Structure):
+        _fields_ = [("cbSize", wintypes.UINT), ("dwTime", wintypes.DWORD)]
+    info = LASTINPUTINFO()
+    info.cbSize = ctypes.sizeof(LASTINPUTINFO)
+    try:
+        user32 = ctypes.WinDLL("user32", use_last_error=True)
+        if not user32.GetLastInputInfo(ctypes.byref(info)):
+            return 0
+        return max(0, (ctypes.windll.kernel32.GetTickCount() - info.dwTime) / 1000.0)
+    except (OSError, AttributeError):
+        return 0
+
 HERE = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
 CONFIG_PATH = HERE / "config.json"
 TOKEN_PATH = HERE / "device_token.json"
@@ -104,6 +120,15 @@ class Agent:
             r.raise_for_status()
         except requests.RequestException as exc:
             logging.warning("Heartbeat failed: %s", exc)
+
+    def session_request(self, action, payload=None):
+        try:
+            response = self.session.post(self.base + "/api/session/" + action, json=payload or {}, timeout=15)
+            response.raise_for_status()
+            return response.json()
+        except requests.RequestException as exc:
+            logging.warning("Session %s failed: %s", action, exc)
+            return None
 
     def foreground_app(self):
         return get_foreground_process_name()
