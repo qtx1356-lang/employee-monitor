@@ -1,48 +1,45 @@
 # Windows 10/11 agent setup (standalone build)
 
-This is a visible, manually started prototype for company-managed Windows 10 and Windows 11 devices. Use it only with documented employee notice and authorization.
+This visible monitoring agent is for authorized company-managed Windows devices. Provide employee notice and follow applicable workplace/privacy rules.
 
-## Install on an employee computer (no Python required)
+## Install with automatic startup (recommended)
 
 1. Download the latest successful **Build Windows Agent** artifact named `employee-monitor-windows` from the repository's GitHub **Actions** tab.
-2. Extract the ZIP to a normal folder.
-3. Double-click `run-agent.bat`.
-4. On first run, the launcher creates `config.json` and opens it in Notepad.
-5. Edit only `employee_name` with the assigned employee's name. The computer name is detected automatically. The Worker URL and sample approved folder are already configured.
-6. Save and close Notepad, then double-click `run-agent.bat` again.
-7. Keep the console window open. The device submits a registration request and waits for administrator approval.
+2. Extract the complete ZIP to a normal folder.
+3. Double-click `install-agent.bat` and approve the Windows administrator prompt.
+4. On first run, the installer creates `config.json` and opens it in Notepad. Enter the assigned employee name, save, close Notepad, then run `install-agent.bat` again.
+5. The installer copies the agent to `C:\ProgramData\EmployeeMonitor` and registers two visible, named Windows Scheduled Tasks:
+   - `EmployeeMonitor-BootHeartbeat`: starts at Windows boot as SYSTEM and sends heartbeat requests only. It does not inspect the desktop or applications.
+   - `EmployeeMonitor-UserSession`: starts at the configured employee's Windows logon in that user's desktop session and detects foreground application process names.
+6. Both tasks are configured to restart after a failure. You do not need to open `run-agent.bat` each day.
+
+The boot component can report the computer online before an employee signs in, once the device has been approved and the network is available. Foreground application detection begins only after the configured user signs in. If another Windows account uses this PC, rerun the installer while signed in to that account or have an administrator configure its logon task too.
 
 ## Approve the computer
 
-1. Open the admin dashboard and load it with the administrator token.
+1. Open the admin dashboard.
 2. Find the computer under **Pending device approvals**.
-3. Confirm the employee and device identity, then click **Approve**.
-4. Restart the agent on that computer. It will then send heartbeats and permitted activity metadata.
+3. Verify the employee and device identity, then click **Approve**.
+4. The boot and user-session components will send heartbeats automatically. No manual restart should be required, though restarting the tasks after approval is a useful first test.
 
-A public registration endpoint means anyone who knows the dashboard URL could submit a request. Therefore, new devices are inactive until an administrator verifies and approves them. Review pending requests before approval.
+## Check or stop the agent
+
+- Open **Task Scheduler** and look for `EmployeeMonitor-BootHeartbeat` and `EmployeeMonitor-UserSession`.
+- To stop temporarily, open Task Scheduler, right-click each task and choose **End**. To start again, choose **Run**.
+- To remove automatic startup, right-click each task and choose **Delete**, or run `uninstall-agent.ps1` as Administrator from the installed folder. This leaves the installed files and device registration in place.
+- To run manually for troubleshooting, use `run-agent.bat` from the extracted package only after stopping the scheduled user-session task, to avoid running two foreground monitors at once.
 
 ## Data collected
 
 - Device name detected from Windows and employee name supplied in config
-- Foreground application process name, sampled every 5 seconds by default; only changes are sent
+- Foreground application process name, sampled every 5 seconds by default; only changes are sent, after user logon
 - File-system event type and file basename only inside explicitly configured approved work folders
 - Heartbeat timestamps
 
-It does not capture window titles, keystrokes, screenshots, passwords, browser page contents, or document contents. The foreground application is identified through the Windows foreground-window and process-ID APIs. File-system notifications are metadata and do not prove that a person opened or read a file. The agent is not hidden and does not install itself as a service or configure automatic startup.
+It does not capture window titles, keystrokes, screenshots, passwords, browser page contents, or document contents. File-system notifications are metadata and do not prove that a person opened or read a file. The boot heartbeat component sends no application or file activity.
 
 ## Credential and deployment notes
 
-- The employee config no longer needs the enrollment code or admin token.
+- The employee config does not need the admin token.
 - Keep `config.json` and `device_token.json` private; the latter contains the device credential.
 - This is a prototype, not production-ready employee-management software. Before company-wide rollout, add identity-based administration, MFA, audit logs, retention limits, backup/recovery, signed updates, rate limiting, and HR/legal review.
-
-## Phase 1 application detection test
-
-1. Stop any older agent instance.
-2. Download the newest successful Build Windows Agent artifact and extract it to a new folder.
-3. Start the agent using `run-agent.bat` (not the EXE directly for first-run setup).
-4. Confirm the device is approved and the agent heartbeat succeeds.
-5. Open Chrome, then switch to Edge or Excel. Leave each application in the foreground for at least 10 seconds.
-6. Refresh Recent activity in the dashboard. You should see process names such as `chrome.exe`, `msedge.exe`, or `EXCEL.EXE` when those apps are foreground.
-
-The agent deliberately does not collect window titles or webpage/document text. The foreground process can be missed briefly if an application is only foreground for less than the sampling interval.
