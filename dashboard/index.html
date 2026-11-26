@@ -21,9 +21,7 @@ table{width:100%;border-collapse:collapse;font-size:14px}th,td{text-align:left;p
 <h1>Employee Monitor</h1>
 <p class="muted">Company-device activity dashboard. Use only with employee notice and authorization.</p>
 <section class="panel">
-<label>API URL<br><input id="api" value="https://employee-monitor.s16530460.workers.dev"></label><br><br>
-<label>Admin token<br><input id="token" type="password" placeholder="Enter ADMIN_TOKEN"></label><br><br>
-<button id="load">Load dashboard</button><p id="message" class="muted"></p>
+<button id="load">Refresh dashboard</button> <span id="message" class="muted">Connecting…</span>
 <p class="small muted">If an approved device has lost its local token, use “Download recovery file” beside that device. Keep the downloaded file private.</p>
 </section>
 <section class="panel"><h2>Device overview</h2><div id="stats" class="stats">Not loaded</div>
@@ -36,15 +34,16 @@ table{width:100%;border-collapse:collapse;font-size:14px}th,td{text-align:left;p
 <script>
 const $=id=>document.getElementById(id);
 const safe=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const headers=()=>({Authorization:"Bearer "+$("token").value.trim()});
-const base=()=> $("api").value.trim().replace(/\/+$/,"");
+const dashboardKey=location.pathname.split("/")[2]||"";
+const headers=()=>({"X-Dashboard-Key":dashboardKey});
+const base=()=>location.origin;
 const duration=n=>{n=Math.max(0,Number(n)||0);const h=Math.floor(n/3600),m=Math.floor((n%3600)/60);return h+"h "+m+"m"};
 async function load(){
- if(!base()||!$("token").value.trim()){$("message").textContent="Enter the API URL and admin token.";return}
+ if(!dashboardKey){$("message").textContent="Open your private dashboard URL.";return}
  $("message").textContent="Loading…";$("message").className="muted";
  try{
   const [o,a]=await Promise.all([fetch(base()+"/api/admin/overview",{headers:headers()}),fetch(base()+"/api/admin/activities?limit=100",{headers:headers()})]);
-  if(!o.ok||!a.ok)throw new Error("API error ("+o.status+"/"+a.status+"). Check API URL and admin token.");
+  if(!o.ok||!a.ok)throw new Error("Dashboard access failed ("+o.status+"/"+a.status+"). Check the private URL and dashboard secret.");
   const overview=await o.json(),activities=await a.json();
   $("stats").innerHTML=[["Registered",overview.registered],["Online",overview.online],["Offline",overview.offline]].map(x=>'<div class="stat"><div class="muted">'+safe(x[0])+'</div><strong>'+safe(x[1])+'</strong></div>').join("");
   $("devices").innerHTML=overview.devices.map(d=>"<tr><td>"+safe(d.employee_name)+"</td><td>"+safe(d.device_name)+"</td><td>"+safe(d.status)+"</td><td>"+safe(d.last_seen||"Never")+"</td><td><button class='secondary recovery' data-id='"+Number(d.id)+"'>Download recovery file</button></td></tr>").join("")||"<tr><td colspan='5'>No devices enrolled</td></tr>";
@@ -71,5 +70,6 @@ async function downloadRecovery(id){
 }
 $("load").addEventListener("click",load);
 $("devices").addEventListener("click",e=>{const b=e.target.closest("button.recovery");if(b)downloadRecovery(b.dataset.id)});
-setInterval(()=>{if(base()&&$("token").value.trim())load()},30000);
+load();
+setInterval(load,30000);
 </script></body></html>
