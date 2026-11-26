@@ -92,6 +92,7 @@ class Agent:
         self.session.headers.update({"X-Device-Token": self.token})
         self.last_app = None
         self.last_app_time = 0
+        self.running_apps = set()
 
     def enroll(self):
         payload = {
@@ -218,17 +219,25 @@ def main():
             logging.warning("Configured work folder does not exist: %s", p)
     observer.start()
     logging.info("Agent running visibly. Press Ctrl+C to stop.")
-    heartbeat_interval = int(agent.cfg.get("heartbeat_seconds", 60))
+    heartbeat_interval = max(30, min(int(agent.cfg.get("heartbeat_seconds", 60)), 120))
+    idle_threshold = max(1, int(agent.cfg.get("idle_threshold_minutes", 10))) * 60
     last_heartbeat = 0
+    agent.session_request("start")
     try:
         while True:
-            agent.sample_app()
+            try:
+                agent.sample_app()
+            except Exception:
+                logging.exception("Application sampling failed; heartbeat loop will continue.")
             if time.time() - last_heartbeat >= heartbeat_interval:
+                idle = get_idle_seconds() >= idle_threshold
+                agent.session_request("heartbeat", {"idle": idle})
                 agent.heartbeat()
                 last_heartbeat = time.time()
             time.sleep(5)
     except KeyboardInterrupt:
         logging.info("Stopping agent.")
+        agent.session_request("end", {"idle": get_idle_seconds() >= idle_threshold})
     finally:
         observer.stop()
         observer.join()
