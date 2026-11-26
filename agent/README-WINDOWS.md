@@ -24,14 +24,25 @@ A public registration endpoint means anyone who knows the dashboard URL could su
 ## Data collected
 
 - Device name detected from Windows and employee name supplied in config
-- Foreground application process name, sampled at the configured interval
+- Foreground application process name, sampled every 5 seconds by default; only changes are sent
 - File-system event type and file basename only inside explicitly configured approved work folders
 - Heartbeat timestamps
 
-It does not capture keystrokes, screenshots, passwords, browser page contents, or document contents. File-system notifications are metadata and do not prove that a person opened or read a file. The agent is not hidden and does not install itself as a service or configure automatic startup.
+It does not capture window titles, keystrokes, screenshots, passwords, browser page contents, or document contents. The foreground application is identified through the Windows foreground-window and process-ID APIs. File-system notifications are metadata and do not prove that a person opened or read a file. The agent is not hidden and does not install itself as a service or configure automatic startup.
 
 ## Credential and deployment notes
 
 - The employee config no longer needs the enrollment code or admin token.
 - Keep `config.json` and `device_token.json` private; the latter contains the device credential.
 - This is a prototype, not production-ready employee-management software. Before company-wide rollout, add identity-based administration, MFA, audit logs, retention limits, backup/recovery, signed updates, rate limiting, and HR/legal review.
+
+## Phase 1 application detection test
+
+1. Stop any older agent instance.
+2. Download the newest successful Build Windows Agent artifact and extract it to a new folder.
+3. Start the agent using `run-agent.bat` (not the EXE directly for first-run setup).
+4. Confirm the device is approved and the agent heartbeat succeeds.
+5. Open Chrome, then switch to Edge or Excel. Leave each application in the foreground for at least 10 seconds.
+6. Refresh Recent activity in the dashboard. You should see process names such as `chrome.exe`, `msedge.exe`, or `EXCEL.EXE` when those apps are foreground.
+
+The agent deliberately does not collect window titles or webpage/document text. The foreground process can be missed briefly if an application is only foreground for less than the sampling interval.
