@@ -10,6 +10,8 @@ import socket
 import time
 import logging
 import sys
+import ctypes
+from ctypes import wintypes
 from pathlib import Path
 from datetime import datetime, timezone
 
@@ -18,11 +20,27 @@ import requests
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
-try:
-    import win32gui
-    import win32process
-except ImportError:
-    win32gui = win32process = None
+# Use the native Windows API directly. This avoids depending on pywin32
+# being importable in the packaged executable.
+def get_foreground_process_name():
+    if os.name != "nt":
+        return None
+    try:
+        user32 = ctypes.WinDLL("user32", use_last_error=True)
+        get_foreground = user32.GetForegroundWindow
+        get_foreground.restype = wintypes.HWND
+        get_pid = user32.GetWindowThreadProcessId
+        get_pid.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+        get_pid.restype = wintypes.DWORD
+        hwnd = get_foreground()
+        if not hwnd:
+            return None
+        pid = wintypes.DWORD(0)
+        if not get_pid(hwnd, ctypes.byref(pid)) or not pid.value:
+            return None
+        return psutil.Process(pid.value).name()
+    except (OSError, psutil.Error, AttributeError, ValueError):
+        return None
 
 HERE = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
 CONFIG_PATH = HERE / "config.json"
@@ -82,28 +100,28 @@ class Agent:
             logging.warning("Heartbeat failed: %s", exc)
 
     def foreground_app(self):
-        if not win32gui:
-            return None
-        try:
-            hwnd = win32gui.GetForegroundWindow()
-            _, pid = win32process.GetWindowThreadProcessId(hwnd)
-            return psutil.Process(pid).name()
-        except Exception:
-            return None
+        return get_foreground_process_name()
 
     def sample_app(self):
+        # Sample frequently so short application switches are not missed.
         now = time.time()
-        interval = int(self.cfg.get("app_sample_seconds", 60))
+        interval = max(2, min(int(self.cfg.get("app_sample_seconds", 5)), 30))
         if now - self.last_app_time < interval:
             return
         self.last_app_time = now
         app = self.foreground_app()
-        if app and app != self.last_app:
+        if not app:
+            return
+        # Do not report the monitor itself or its launcher shell as employee work.
+        ignored = {"EmployeeMonitorAgent.exe", "cmd.exe", "powershell.exe", "conhost.exe"}
+        if app.lower() in {name.lower() for name in ignored}:
+            return
+        if app != self.last_app:
             self.last_app = app
             self.send_events([{
                 "event_type": "application_foreground",
                 "app_name": app,
-                "details": "Foreground application process name",
+                "details": "Foreground application process name only; no window title or content collected",
                 "occurred_at": utc_now()
             }])
 
