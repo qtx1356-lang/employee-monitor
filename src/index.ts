@@ -81,28 +81,22 @@ async function handleApi(request: Request, env: Env): Promise<Response> {
   }
 
   if (method === "POST" && path === "/api/enroll") {
-    if (!env.ENROLLMENT_CODE || env.ENROLLMENT_CODE.length < 16) {
-      return json({ detail: "Enrollment is not configured securely." }, 503);
-    }
     let body: any;
     try { body = await request.json(); } catch { return json({ detail: "Invalid JSON body." }, 400); }
-    if (!body || typeof body !== "object" ||
-        !secureEqual(String(body.enrollment_code || ""), env.ENROLLMENT_CODE)) {
-      return json({ detail: "Invalid enrollment code" }, 403);
+    if (!body || typeof body !== "object" || !validText(body.employee_name, 160)) {
+      return json({ detail: "employee_name is required (max 160 characters)." }, 422);
     }
-    if (!validText(body.device_name, 160) || !validText(body.employee_name, 160)) {
-      return json({ detail: "device_name and employee_name are required (max 160 characters)." }, 422);
-    }
+    const deviceName = validText(body.device_name, 160) ? body.device_name.trim() : "PC-" + crypto.randomUUID().slice(0, 8);
     const token = `dev_${crypto.randomUUID().replaceAll("-", "")}${crypto.randomUUID().replaceAll("-", "")}`;
     const now = new Date().toISOString();
     try {
       const result = await env.DB.prepare(
-        "INSERT INTO devices (device_name, employee_name, device_token, created_at, is_active) VALUES (?, ?, ?, ?, 1)"
-      ).bind(body.device_name.trim(), body.employee_name.trim(), token, now).run();
-      return json({ device_id: result.meta.last_row_id, device_token: token, message: "Device enrolled. Store the token securely." });
+        "INSERT INTO devices (device_name, employee_name, device_token, created_at, is_active, approval_status) VALUES (?, ?, ?, ?, 0, 'pending')"
+      ).bind(deviceName, body.employee_name.trim(), token, now).run();
+      return json({ device_id: result.meta.last_row_id, device_token: token, approval_status: "pending", message: "Registration request submitted. An administrator must approve this device." });
     } catch (error) {
       const message = String(error);
-      if (message.toLowerCase().includes("unique")) return json({ detail: "Device name already enrolled" }, 409);
+      if (message.toLowerCase().includes("unique")) return json({ detail: "Device name already enrolled. Ask an administrator to check the existing device." }, 409);
       return json({ detail: "Could not enroll device." }, 500);
     }
   }
@@ -151,8 +145,11 @@ async function handleApi(request: Request, env: Env): Promise<Response> {
     if (method === "GET" && path === "/api/admin/overview") {
       const now = Date.now();
       const rows = await env.DB.prepare(
-        "SELECT id, device_name, employee_name, last_seen FROM devices WHERE is_active = 1 ORDER BY employee_name, device_name"
+        "SELECT id, device_name, employee_name, last_seen FROM devices WHERE is_active = 1 AND approval_status = 'approved' ORDER BY employee_name, device_name"
       ).all<{id:number;device_name:string;employee_name:string;last_seen:string|null}>();
+      const pendingRows = await env.DB.prepare(
+        "SELECT id, device_name, employee_name, created_at FROM devices WHERE approval_status = 'pending' ORDER BY created_at DESC"
+      ).all();
       const devices = rows.results.map(d => {
         const online = !!d.last_seen && now - Date.parse(d.last_seen) <= 3 * 60 * 1000;
         return { ...d, status: online ? "Online" : "Offline" };
@@ -161,7 +158,8 @@ async function handleApi(request: Request, env: Env): Promise<Response> {
         registered: devices.length,
         online: devices.filter(d => d.status === "Online").length,
         offline: devices.filter(d => d.status === "Offline").length,
-        devices
+        devices,
+        pending: pendingRows.results
       });
     }
 
@@ -174,10 +172,18 @@ async function handleApi(request: Request, env: Env): Promise<Response> {
       return json(rows.results);
     }
 
+    const approveMatch = path.match(/^\/api\/admin\/devices\/(\d+)\/approve$/);
+    if (method === "POST" && approveMatch) {
+      const id = Number(approveMatch[1]);
+      const result = await env.DB.prepare("UPDATE devices SET is_active = 1, approval_status = 'approved' WHERE id = ? AND approval_status = 'pending'").bind(id).run();
+      if (!result.meta.changes) return json({ detail: "Pending device not found" }, 404);
+      return json({ approved: true });
+    }
+
     const revokeMatch = path.match(/^\/api\/admin\/devices\/(\d+)\/revoke$/);
     if (method === "POST" && revokeMatch) {
       const id = Number(revokeMatch[1]);
-      const result = await env.DB.prepare("UPDATE devices SET is_active = 0 WHERE id = ?").bind(id).run();
+      const result = await env.DB.prepare("UPDATE devices SET is_active = 0, approval_status = 'revoked' WHERE id = ?").bind(id).run();
       if (!result.meta.changes) return json({ detail: "Device not found" }, 404);
       return json({ revoked: true });
     }
