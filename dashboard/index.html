@@ -24,7 +24,7 @@ table{width:100%;border-collapse:collapse;font-size:14px}th,td{text-align:left;p
 <button id="load">Load dashboard</button><p id="message" class="muted"></p>
 </section>
 <section class="panel"><h2>Device overview</h2><div id="stats" class="stats">Not loaded</div><div class="wrap"><table><thead><tr><th>Employee</th><th>Device</th><th>Status</th><th>Last seen</th></tr></thead><tbody id="devices"></tbody></table></div></section>
-<section class="panel"><h2>Recent activity</h2><div class="wrap"><table><thead><tr><th>Time</th><th>Employee</th><th>Event</th><th>Application</th><th>File name</th><th>Details</th></tr></thead><tbody id="activities"></tbody></table></div></section>
+<section class="panel"><h2>Today’s working sessions</h2><p class="muted">Session time includes idle periods. Active time excludes periods after 10 minutes without keyboard or mouse input.</p><div class="wrap"><table><thead><tr><th>Employee</th><th>Device</th><th>Started</th><th>Ended / last signal</th><th>Session time</th><th>Active time</th><th>Status</th></tr></thead><tbody id="sessions"></tbody></table></div></section>\n<section class="panel"><h2>Recent activity</h2><div class="wrap"><table><thead><tr><th>Time</th><th>Employee</th><th>Event</th><th>Application</th><th>File name</th><th>Details</th></tr></thead><tbody id="activities"></tbody></table></div></section>
 </main>
 <script>
 const $=id=>document.getElementById(id);
@@ -40,9 +40,9 @@ async function load(){
   const overview=await o.json(),activities=await a.json();
   $("stats").innerHTML=[["Registered",overview.registered],["Online",overview.online],["Offline",overview.offline]].map(x=>'<div class="stat"><div class="muted">'+safe(x[0])+'</div><strong>'+safe(x[1])+'</strong></div>').join("");
   $("devices").innerHTML=overview.devices.map(d=>"<tr><td>"+safe(d.employee_name)+"</td><td>"+safe(d.device_name)+"</td><td>"+safe(d.status)+"</td><td>"+safe(d.last_seen||"Never")+"</td></tr>").join("")||"<tr><td colspan=4>No devices enrolled</td></tr>";
-  $("activities").innerHTML=activities.map(x=>"<tr><td>"+safe(x.occurred_at)+"</td><td>"+safe(x.employee)+"</td><td>"+safe(x.event_type)+"</td><td>"+safe(x.app_name)+"</td><td>"+safe(x.file_name)+"</td><td>"+safe(x.details)+"</td></tr>").join("")||"<tr><td colspan=6>No activity recorded</td></tr>";
+  const duration=n=>{n=Math.max(0,Number(n)||0);const h=Math.floor(n/3600),m=Math.floor((n%3600)/60);return h+"h "+m+"m"};\n  $("sessions").innerHTML=work.sessions.map(x=>"<tr><td>"+safe(x.employee)+"</td><td>"+safe(x.device)+"</td><td>"+safe(x.started_at)+"</td><td>"+safe(x.ended_at||x.last_heartbeat)+"</td><td>"+duration(x.session_seconds)+"</td><td>"+duration(x.active_seconds)+"</td><td>"+safe(x.status)+"</td></tr>").join("")||"<tr><td colspan=7>No sessions recorded today</td></tr>";\n  $("activities").innerHTML=activities.map(x=>"<tr><td>"+safe(x.occurred_at)+"</td><td>"+safe(x.employee)+"</td><td>"+safe(x.event_type)+"</td><td>"+safe(x.app_name)+"</td><td>"+safe(x.file_name)+"</td><td>"+safe(x.details)+"</td></tr>").join("")||"<tr><td colspan=6>No activity recorded</td></tr>";
   $("message").textContent="Dashboard updated."; $("message").className="ok";
  }catch(e){$("message").textContent=e.message;$("message").className="error"}
 }
-$("load").addEventListener("click",load);
+$("load").addEventListener("click",load);\nsetInterval(()=>{if($("api").value.trim()&&$("token").value)load()},30000);
 </script></body></html>
