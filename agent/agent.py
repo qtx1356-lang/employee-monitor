@@ -9,6 +9,7 @@ import os
 import socket
 import time
 import logging
+import sys
 from pathlib import Path
 from datetime import datetime, timezone
 
@@ -23,7 +24,7 @@ try:
 except ImportError:
     win32gui = win32process = None
 
-HERE = Path(__file__).resolve().parent
+HERE = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
 CONFIG_PATH = HERE / "config.json"
 TOKEN_PATH = HERE / "device_token.json"
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
