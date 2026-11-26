@@ -45,7 +45,13 @@ def get_foreground_process_name():
 HERE = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
 CONFIG_PATH = HERE / "config.json"
 TOKEN_PATH = HERE / "device_token.json"
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+LOG_DIR = Path(os.environ.get("LOCALAPPDATA", os.environ.get("PROGRAMDATA", "."))) / "EmployeeMonitor" / "logs"
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+LOG_NAME = "boot-heartbeat.log" if "--heartbeat-only" in sys.argv else "user-session.log"
+_log_handlers = [logging.FileHandler(LOG_DIR / LOG_NAME, encoding="utf-8")]
+if "--heartbeat-only" not in sys.argv:
+    _log_handlers.append(logging.StreamHandler(sys.stdout))
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", handlers=_log_handlers)
 
 def utc_now():
     return datetime.now(timezone.utc).isoformat()
