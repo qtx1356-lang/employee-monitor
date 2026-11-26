@@ -41,7 +41,7 @@ class Agent:
         if not CONFIG_PATH.exists():
             raise RuntimeError("Create agent/config.json from config.example.json first.")
         self.cfg = load_json(CONFIG_PATH)
-        self.base = self.cfg["api_base_url"].rstrip("/")
+        self.base = self.cfg.get("api_base_url", "https://employee-monitor.s16530460.workers.dev").rstrip("/")
         self.session = requests.Session()
         self.session.headers.update({"Content-Type": "application/json"})
         self.token = None
@@ -55,7 +55,6 @@ class Agent:
 
     def enroll(self):
         payload = {
-            "enrollment_code": self.cfg["enrollment_code"],
             "device_name": self.cfg.get("device_name") or socket.gethostname(),
             "employee_name": self.cfg["employee_name"]
         }
@@ -63,7 +62,7 @@ class Agent:
         response.raise_for_status()
         self.token = response.json()["device_token"]
         TOKEN_PATH.write_text(json.dumps({"device_token": self.token}), encoding="utf-8")
-        logging.info("Device enrolled successfully. Keep device_token.json private.")
+        logging.info("Registration request submitted. Device is pending administrator approval. Keep device_token.json private.")
 
     def send_events(self, events):
         if not events:
