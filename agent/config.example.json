@@ -1,5 +1,5 @@
 {
-  "api_base_url": "https://YOUR-WORKER.workers.dev",
+  "api_base_url": "https://employee-monitor.s16530460.workers.dev",
   "enrollment_code": "CHANGE-THIS-TO-YOUR-ENROLLMENT-CODE",
   "device_name": "OFFICE-PC-01",
   "employee_name": "Employee Name",
