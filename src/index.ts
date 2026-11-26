@@ -101,6 +101,49 @@ async function handleApi(request: Request, env: Env): Promise<Response> {
     }
   }
 
+  // Employee login session accounting. Active time is accumulated only while the
+  // interactive agent reports recent user activity; missing shutdown events are
+  // bounded by the last successful session heartbeat.
+  if (method === "POST" && path.startsWith("/api/session/")) {
+    const device = await activeDevice(request, env);
+    if (!device) return json({ detail: "Unknown, missing, or revoked device token." }, 401);
+    const now = new Date().toISOString();
+    if (path === "/api/session/start") {
+      await env.DB.batch([
+        env.DB.prepare("UPDATE sessions SET ended_at = COALESCE(ended_at, last_heartbeat), end_reason = COALESCE(end_reason, 'recovered') WHERE device_id = ? AND ended_at IS NULL").bind(device.id),
+        env.DB.prepare("INSERT INTO sessions (device_id, started_at, last_heartbeat, active_seconds) VALUES (?, ?, ?, 0)").bind(device.id, now, now),
+        env.DB.prepare("UPDATE devices SET last_seen = ? WHERE id = ?").bind(now, device.id)
+      ]);
+      return json({ started: true, started_at: now });
+    }
+    if (path === "/api/session/heartbeat") {
+      let body: any;
+      try { body = await request.json(); } catch { return json({ detail: "Invalid JSON body." }, 400); }
+      const row = await env.DB.prepare("SELECT id, last_heartbeat FROM sessions WHERE device_id = ? AND ended_at IS NULL ORDER BY id DESC LIMIT 1").bind(device.id).first<{id:number;last_heartbeat:string}>();
+      if (!row) return json({ detail: "No active session." }, 409);
+      const elapsed = Math.max(0, Math.min(120, Math.floor((Date.parse(now) - Date.parse(row.last_heartbeat)) / 1000)));
+      const addActive = body && body.idle === false ? elapsed : 0;
+      await env.DB.batch([
+        env.DB.prepare("UPDATE sessions SET active_seconds = active_seconds + ?, last_heartbeat = ? WHERE id = ?").bind(addActive, now, row.id),
+        env.DB.prepare("UPDATE devices SET last_seen = ? WHERE id = ?").bind(now, device.id)
+      ]);
+      return json({ ok: true, active_seconds_added: addActive });
+    }
+    if (path === "/api/session/end") {
+      let body: any = {};
+      try { body = await request.json(); } catch {}
+      const row = await env.DB.prepare("SELECT id, last_heartbeat FROM sessions WHERE device_id = ? AND ended_at IS NULL ORDER BY id DESC LIMIT 1").bind(device.id).first<{id:number;last_heartbeat:string}>();
+      if (!row) return json({ ended: false, message: "No active session." });
+      const elapsed = Math.max(0, Math.min(120, Math.floor((Date.parse(now) - Date.parse(row.last_heartbeat)) / 1000)));
+      const addActive = body && body.idle === false ? elapsed : 0;
+      await env.DB.batch([
+        env.DB.prepare("UPDATE sessions SET active_seconds = active_seconds + ?, ended_at = ?, end_reason = 'logout' WHERE id = ?").bind(addActive, now, row.id),
+        env.DB.prepare("UPDATE devices SET last_seen = ? WHERE id = ?").bind(now, device.id)
+      ]);
+      return json({ ended: true, ended_at: now });
+    }
+  }
+
   if (method === "POST" && (path === "/api/heartbeat" || path === "/api/events")) {
     const device = await activeDevice(request, env);
     if (!device) return json({ detail: "Unknown, missing, or revoked device token." }, 401);
@@ -161,6 +204,20 @@ async function handleApi(request: Request, env: Env): Promise<Response> {
         devices,
         pending: pendingRows.results
       });
+    }
+
+    if (method === "GET" && path === "/api/admin/sessions") {
+      const day = url.searchParams.get("date") || new Date().toISOString().slice(0, 10);
+      if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(day)) return json({ detail: "date must be YYYY-MM-DD" }, 400);
+      const rows = await env.DB.prepare(
+        "SELECT s.id, d.employee_name AS employee, d.device_name AS device, s.started_at, s.ended_at, s.last_heartbeat, s.active_seconds, s.end_reason FROM sessions s JOIN devices d ON d.id = s.device_id WHERE substr(s.started_at, 1, 10) = ? ORDER BY s.started_at DESC"
+      ).bind(day).all();
+      const sessions = rows.results.map((r: any) => {
+        const stop = r.ended_at || r.last_heartbeat;
+        const sessionSeconds = Math.max(0, Math.floor((Date.parse(stop) - Date.parse(r.started_at)) / 1000));
+        return { ...r, session_seconds: sessionSeconds, active_seconds: Math.min(sessionSeconds, Number(r.active_seconds || 0)), status: r.ended_at ? "Ended" : "In progress (last heartbeat)" };
+      });
+      return json({ date: day, sessions });
     }
 
     if (method === "GET" && path === "/api/admin/activities") {
