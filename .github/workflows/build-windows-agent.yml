@@ -34,7 +34,7 @@ jobs:
           Copy-Item config.example.json dist/EmployeeMonitorAgent/config.example.json
           Copy-Item run-agent.bat dist/EmployeeMonitorAgent/run-agent.bat
           Copy-Item README-WINDOWS.md dist/EmployeeMonitorAgent/README-WINDOWS.md
-          Compress-Archive -Path dist/EmployeeMonitorAgent -DestinationPath dist/employee-monitor-windows.zip -Force
+          Compress-Archive -Path dist/EmployeeMonitorAgent/* -DestinationPath dist/employee-monitor-windows.zip -Force
 
       - name: Upload standalone Windows ZIP
         uses: actions/upload-artifact@v4
