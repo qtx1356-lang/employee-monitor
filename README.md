@@ -38,7 +38,7 @@ SQLite is suitable only for local testing. Use managed PostgreSQL for deployment
 6. The first run enrolls the device and creates device_token.json. Protect this file with Windows account permissions and do not commit it.
 
 ## Dashboard
-Open dashboard/index.html in a browser. Enter the deployed API URL and the ADMIN_TOKEN value. Keep the admin token private. For production, serve the dashboard over HTTPS and restrict API CORS to its exact origin.
+The Cloudflare dashboard is opened only at /admin/<DASHBOARD_KEY>. Set a long random Worker secret named DASHBOARD_KEY (at least 32 characters) in Cloudflare. The dashboard reads the key from its private URL and sends it only to the Worker for admin API authorization. Do not commit the key or share the URL publicly. The plain root URL does not expose the dashboard.
 
 ## Current prototype limitations
 - No production-grade user accounts, MFA, role-based access, or audit log for administrator actions.
