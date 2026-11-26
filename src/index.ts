@@ -2,7 +2,7 @@ export interface Env {
   DB: D1Database;
   ASSETS: Fetcher;
   ADMIN_TOKEN?: string;
-  DASHBOARD_KEY: string;
+  DASHBOARD_ACCESS_KEY: string;
   ENROLLMENT_CODE: string;
 }
 
@@ -48,8 +48,8 @@ function bearer(request: Request): string {
 
 async function adminOK(request: Request, env: Env): Promise<boolean> {
   const supplied = request.headers.get("X-Dashboard-Key") || "";
-  if (!env.DASHBOARD_KEY || env.DASHBOARD_KEY.length < 32) return false;
-  return secureEqual(supplied, env.DASHBOARD_KEY);
+  if (!env.DASHBOARD_ACCESS_KEY || env.DASHBOARD_ACCESS_KEY.length < 32) return false;
+  return secureEqual(supplied, env.DASHBOARD_ACCESS_KEY);
 }
 
 async function activeDevice(request: Request, env: Env): Promise<Device | null> {
@@ -94,7 +94,7 @@ async function handleApi(request: Request, env: Env): Promise<Response> {
       status: database === "connected" ? "ok" : "error",
       version: "1.0.0-cloudflare",
       database,
-      dashboard_key_configured: !!env.DASHBOARD_KEY && env.DASHBOARD_KEY.trim().length >= 32,
+      dashboard_key_configured: !!env.DASHBOARD_ACCESS_KEY && env.DASHBOARD_ACCESS_KEY.trim().length >= 32,
       dashboard_asset_status: dashboardAsset
     }, database === "connected" ? 200 : 503);
   }
@@ -310,7 +310,7 @@ export default {
     if (url.pathname.startsWith("/admin/")) {
       const match = url.pathname.match(/^\/admin\/([^/]+)\/?$/);
       const supplied = match ? decodeURIComponent(match[1]).trim() : "";
-      const configuredKey = (env.DASHBOARD_KEY || "").trim();
+      const configuredKey = (env.DASHBOARD_ACCESS_KEY || "").trim();
       if (configuredKey.length < 32 || !secureEqual(supplied, configuredKey)) {
         return new Response("Not found", { status: 404, headers: { "Cache-Control": "no-store" } });
       }
