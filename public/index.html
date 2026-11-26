@@ -23,6 +23,7 @@ table{width:100%;border-collapse:collapse;font-size:14px}th,td{text-align:left;p
 <label>Admin token<br><input id="token" type="password" autocomplete="off" placeholder="Enter ADMIN_TOKEN"></label><br><br>
 <button id="load">Load dashboard</button><p id="message" class="muted"></p>
 </section>
+<section class="panel"><h2>Pending device approvals</h2><p class="muted">New computers appear here until an administrator approves them.</p><div class="wrap"><table><thead><tr><th>Employee</th><th>Device</th><th>Requested</th><th>Action</th></tr></thead><tbody id="pending"></tbody></table></div></section>
 <section class="panel"><h2>Device overview</h2><div id="stats" class="stats">Not loaded</div><div class="wrap"><table><thead><tr><th>Employee</th><th>Device</th><th>Status</th><th>Last seen</th></tr></thead><tbody id="devices"></tbody></table></div></section>
 <section class="panel"><h2>Recent activity</h2><div class="wrap"><table><thead><tr><th>Time</th><th>Employee</th><th>Event</th><th>Application</th><th>File name</th><th>Details</th></tr></thead><tbody id="activities"></tbody></table></div></section>
 </main>
@@ -39,10 +40,18 @@ async function load(){
   const [o,a]=await Promise.all([fetch(base+"/api/admin/overview",{headers}),fetch(base+"/api/admin/activities?limit=100",{headers})]);
   if(!o.ok||!a.ok)throw new Error("API error ("+o.status+"/"+a.status+"). Check URL or admin token.");
   const overview=await o.json(),activities=await a.json();
+  $("pending").innerHTML=(overview.pending||[]).map(d=>"<tr><td>"+safe(d.employee_name)+"</td><td>"+safe(d.device_name)+"</td><td>"+safe(d.created_at)+"</td><td><button onclick=\"approveDevice("+Number(d.id)+")\">Approve</button></td></tr>").join("")||"<tr><td colspan=4>No pending devices</td></tr>";
   $("stats").innerHTML=[["Registered",overview.registered],["Online",overview.online],["Offline",overview.offline]].map(x=>'<div class="stat"><div class="muted">'+safe(x[0])+'</div><strong>'+safe(x[1])+'</strong></div>').join("");
   $("devices").innerHTML=overview.devices.map(d=>"<tr><td>"+safe(d.employee_name)+"</td><td>"+safe(d.device_name)+"</td><td>"+safe(d.status)+"</td><td>"+safe(d.last_seen||"Never")+"</td></tr>").join("")||"<tr><td colspan=4>No devices enrolled</td></tr>";
   $("activities").innerHTML=activities.map(x=>"<tr><td>"+safe(x.occurred_at)+"</td><td>"+safe(x.employee)+"</td><td>"+safe(x.event_type)+"</td><td>"+safe(x.app_name)+"</td><td>"+safe(x.file_name)+"</td><td>"+safe(x.details)+"</td></tr>").join("")||"<tr><td colspan=6>No activity recorded</td></tr>";
   $("message").textContent="Dashboard updated."; $("message").className="ok";
+ }catch(e){$("message").textContent=e.message;$("message").className="error"}
+}
+async function approveDevice(id){
+ const base=$("api").value.trim().replace(/\\/+$/,""),token=$("token").value;
+ try{const r=await fetch(base+"/api/admin/devices/"+id+"/approve",{method:"POST",headers:{Authorization:"Bearer "+token}});
+ if(!r.ok)throw new Error("Could not approve device ("+r.status+").");
+ await load();
  }catch(e){$("message").textContent=e.message;$("message").className="error"}
 }
 $("load").addEventListener("click",load);
