@@ -74,12 +74,29 @@ async function handleApi(request: Request, env: Env): Promise<Response> {
   }
 
   if (method === "GET" && path === "/health") {
+    let database = "connected";
     try {
       await env.DB.prepare("SELECT 1 AS ok").first();
-      return json({ status: "ok", version: "1.0.0-cloudflare", database: "connected" });
     } catch {
-      return json({ status: "error", database: "unavailable" }, 503);
+      database = "unavailable";
     }
+    let dashboardAsset = "unknown";
+    try {
+      const assetUrl = new URL(request.url);
+      assetUrl.pathname = "/index.html";
+      assetUrl.search = "";
+      const assetResponse = await env.ASSETS.fetch(new Request(assetUrl.toString(), { method: "GET" }));
+      dashboardAsset = String(assetResponse.status);
+    } catch {
+      dashboardAsset = "error";
+    }
+    return json({
+      status: database === "connected" ? "ok" : "error",
+      version: "1.0.0-cloudflare",
+      database,
+      dashboard_key_configured: !!env.DASHBOARD_KEY && env.DASHBOARD_KEY.trim().length >= 32,
+      dashboard_asset_status: dashboardAsset
+    }, database === "connected" ? 200 : 503);
   }
 
   if (method === "POST" && path === "/api/enroll") {
