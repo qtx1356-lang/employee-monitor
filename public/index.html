@@ -48,7 +48,7 @@ async function load(){
  }catch(e){$("message").textContent=e.message;$("message").className="error"}
 }
 async function approveDevice(id){
- const base=$("api").value.trim().replace(/\\/+$/,""),token=$("token").value;
+ const base=$("api").value.trim().replace(/\/+$/,""),token=$("token").value;
  try{const r=await fetch(base+"/api/admin/devices/"+id+"/approve",{method:"POST",headers:{Authorization:"Bearer "+token}});
  if(!r.ok)throw new Error("Could not approve device ("+r.status+").");
  await load();
