@@ -292,8 +292,9 @@ export default {
     }
     if (url.pathname.startsWith("/admin/")) {
       const match = url.pathname.match(/^\/admin\/([^/]+)\/?$/);
-      const supplied = match ? decodeURIComponent(match[1]) : "";
-      if (!env.DASHBOARD_KEY || env.DASHBOARD_KEY.length < 32 || !secureEqual(supplied, env.DASHBOARD_KEY)) {
+      const supplied = match ? decodeURIComponent(match[1]).trim() : "";
+      const configuredKey = (env.DASHBOARD_KEY || "").trim();
+      if (configuredKey.length < 32 || !secureEqual(supplied, configuredKey)) {
         return new Response("Not found", { status: 404, headers: { "Cache-Control": "no-store" } });
       }
       const assetUrl = new URL(request.url);
