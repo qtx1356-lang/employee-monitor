@@ -140,6 +140,29 @@ class Agent:
         if now - self.last_app_time < interval:
             return
         self.last_app_time = now
+        # Report application process start/exit transitions by process name only.
+        # System and monitor processes are excluded; no window titles or content.
+        ignored = {"system", "registry", "smss.exe", "csrss.exe", "wininit.exe",
+                   "services.exe", "lsass.exe", "svchost.exe", "runtimebroker.exe",
+                   "employeeMonitorAgent.exe".lower(), "cmd.exe", "powershell.exe",
+                   "conhost.exe", "taskhostw.exe", "dwm.exe"}
+        current = set()
+        try:
+            for proc in psutil.process_iter(["name"]):
+                name = proc.info.get("name")
+                if name and name.lower() not in ignored:
+                    current.add(name)
+        except (psutil.Error, OSError):
+            pass
+        for name in sorted(current - self.running_apps):
+            self.send_events([{"event_type": "application_opened", "app_name": name,
+                               "details": "Application process started; process name only",
+                               "occurred_at": utc_now()}])
+        for name in sorted(self.running_apps - current):
+            self.send_events([{"event_type": "application_closed", "app_name": name,
+                               "details": "Application process exited; process name only",
+                               "occurred_at": utc_now()}])
+        self.running_apps = current
         app = self.foreground_app()
         if not app:
             return
