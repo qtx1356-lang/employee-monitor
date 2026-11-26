@@ -25,7 +25,7 @@ table{width:100%;border-collapse:collapse;font-size:14px}th,td{text-align:left;p
 </section>
 <section class="panel"><h2>Pending device approvals</h2><p class="muted">New computers appear here until an administrator approves them.</p><div class="wrap"><table><thead><tr><th>Employee</th><th>Device</th><th>Requested</th><th>Action</th></tr></thead><tbody id="pending"></tbody></table></div></section>
 <section class="panel"><h2>Device overview</h2><div id="stats" class="stats">Not loaded</div><div class="wrap"><table><thead><tr><th>Employee</th><th>Device</th><th>Status</th><th>Last seen</th></tr></thead><tbody id="devices"></tbody></table></div></section>
-<section class="panel"><h2>Recent activity</h2><div class="wrap"><table><thead><tr><th>Time</th><th>Employee</th><th>Event</th><th>Application</th><th>File name</th><th>Details</th></tr></thead><tbody id="activities"></tbody></table></div></section>
+<section class="panel"><h2>Daily working time</h2><p class="muted">Computer session time includes idle periods. Active time excludes idle periods reported by the agent.</p><label>Date<br><input id="sessionDate" type="date"></label> <button id="loadSessions">Load time report</button><div id="timeTotals" class="stats" style="margin-top:14px">Not loaded</div><div class="wrap"><table><thead><tr><th>Employee</th><th>Device</th><th>Session started</th><th>Session ended</th><th>Session time</th><th>Active time</th><th>Idle time</th></tr></thead><tbody id="sessions"></tbody></table></div></section>\n<section class="panel"><h2>Recent activity</h2><div class="wrap"><table><thead><tr><th>Time</th><th>Employee</th><th>Event</th><th>Application</th><th>File name</th><th>Details</th></tr></thead><tbody id="activities"></tbody></table></div></section>
 </main>
 <script>
 const $=id=>document.getElementById(id);
@@ -47,6 +47,25 @@ async function load(){
   $("message").textContent="Dashboard updated."; $("message").className="ok";
  }catch(e){$("message").textContent=e.message;$("message").className="error"}
 }
+
+function duration(value){const n=Math.max(0,Math.floor(Number(value||0)));const h=Math.floor(n/3600),m=Math.floor((n%3600)/60);return h+"h "+m+"m"}
+async function loadSessions(){
+ const base=$("api").value.trim().replace(/\\/+$/,""),token=$("token").value,date=$("sessionDate").value;
+ if(!base||!token||!date){$("message").textContent="Enter the API URL, admin token and date.";return}
+ try{
+  const r=await fetch(base+"/api/admin/sessions?date="+encodeURIComponent(date),{headers:{Authorization:"Bearer "+token}});
+  if(!r.ok)throw new Error("Could not load time report ("+r.status+").");
+  const data=await r.json(),t=data.totals||{};
+  $("timeTotals").innerHTML=[["Computer session time",duration(t.session_seconds)],["Active time",duration(t.active_seconds)],["Idle time",duration(t.idle_seconds)]].map(x=>'<div class="stat"><div class="muted">'+safe(x[0])+'</div><strong>'+safe(x[1])+'</strong></div>').join("");
+  $("sessions").innerHTML=(data.sessions||[]).map(s=>{
+   const start=Date.parse(s.started_at),end=s.ended_at?Date.parse(s.ended_at):Date.now();
+   return "<tr><td>"+safe(s.employee_name)+"</td><td>"+safe(s.device_name)+"</td><td>"+safe(s.started_at)+"</td><td>"+safe(s.ended_at||"In progress")+"</td><td>"+safe(duration((end-start)/1000))+"</td><td>"+safe(duration(s.active_seconds))+"</td><td>"+safe(duration(s.idle_seconds))+"</td></tr>";
+  }).join("")||"<tr><td colspan=7>No sessions recorded for this date</td></tr>";
+ }catch(e){$("message").textContent=e.message;$("message").className="error"}
+}
+$("loadSessions").addEventListener("click",loadSessions);
+$("sessionDate").value=new Date().toISOString().slice(0,10);
+
 async function approveDevice(id){
  const base=$("api").value.trim().replace(/\/+$/,""),token=$("token").value;
  try{const r=await fetch(base+"/api/admin/devices/"+id+"/approve",{method:"POST",headers:{Authorization:"Bearer "+token}});
