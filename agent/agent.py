@@ -143,6 +143,16 @@ def main():
     if os.name != "nt":
         raise RuntimeError("This monitoring agent prototype supports Windows 10/11 only.")
     agent = Agent()
+    # The startup task runs this mode as SYSTEM before any employee signs in.
+    # It sends heartbeats only; foreground-app detection runs in the interactive
+    # user session after Windows logon.
+    if "--heartbeat-only" in sys.argv:
+        interval = max(30, min(int(agent.cfg.get("heartbeat_seconds", 60)), 300))
+        logging.info("Boot heartbeat component running. Foreground application monitoring waits for user logon.")
+        while True:
+            agent.heartbeat()
+            time.sleep(interval)
+
     observer = Observer()
     handler = WorkFolderHandler(agent)
     for folder in agent.cfg.get("approved_work_folders", []):
