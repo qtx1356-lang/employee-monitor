@@ -33,6 +33,9 @@ jobs:
           pyinstaller --noconfirm --clean --onedir --console --name EmployeeMonitorAgent --collect-all watchdog --hidden-import win32timezone agent.py
           Copy-Item config.example.json dist/EmployeeMonitorAgent/config.example.json
           Copy-Item run-agent.bat dist/EmployeeMonitorAgent/run-agent.bat
+          Copy-Item install-agent.bat dist/EmployeeMonitorAgent/install-agent.bat
+          Copy-Item install-agent.ps1 dist/EmployeeMonitorAgent/install-agent.ps1
+          Copy-Item uninstall-agent.ps1 dist/EmployeeMonitorAgent/uninstall-agent.ps1
           Copy-Item README-WINDOWS.md dist/EmployeeMonitorAgent/README-WINDOWS.md
           Compress-Archive -Path dist/EmployeeMonitorAgent/* -DestinationPath dist/employee-monitor-windows.zip -Force
 
