@@ -95,6 +95,8 @@ async function handleApi(request: Request, env: Env): Promise<Response> {
       version: "1.0.0-cloudflare",
       database,
       dashboard_key_configured: !!env.DASHBOARD_ACCESS_KEY && env.DASHBOARD_ACCESS_KEY.trim().length >= 32,
+      dashboard_key_status: !env.DASHBOARD_ACCESS_KEY ? "missing" : env.DASHBOARD_ACCESS_KEY.trim().length < 32 ? "too_short" : "configured",
+      dashboard_key_length: typeof env.DASHBOARD_ACCESS_KEY === "string" ? env.DASHBOARD_ACCESS_KEY.length : 0,
       dashboard_asset_status: dashboardAsset
     }, database === "connected" ? 200 : 503);
   }
