@@ -206,6 +206,18 @@ async function handleApi(request: Request, env: Env): Promise<Response> {
       });
     }
 
+    const recoveryMatch = path.match(/^\/api\/admin\/devices\/(\d+)\/recovery-token$/);
+    if (method === "GET" && recoveryMatch) {
+      const id = Number(recoveryMatch[1]);
+      const device = await env.DB.prepare(
+        "SELECT id, device_name, employee_name, device_token FROM devices WHERE id = ? AND is_active = 1 AND approval_status = 'approved'"
+      ).bind(id).first<{id:number;device_name:string;employee_name:string;device_token:string}>();
+      if (!device) return json({ detail: "Approved active device not found." }, 404);
+      // This endpoint is available only after ADMIN_TOKEN authentication.
+      // It returns the existing token; it does not rotate credentials or change history.
+      return json({ device_id: device.id, device_name: device.device_name, employee_name: device.employee_name, device_token: device.device_token });
+    }
+
     if (method === "GET" && path === "/api/admin/sessions") {
       const day = url.searchParams.get("date") || new Date().toISOString().slice(0, 10);
       if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(day)) return json({ detail: "date must be YYYY-MM-DD" }, 400);
