@@ -299,7 +299,11 @@ export default {
       const assetUrl = new URL(request.url);
       assetUrl.pathname = "/";
       assetUrl.search = "";
-      return env.ASSETS.fetch(new Request(assetUrl.toString(), { method: "GET", headers: { "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" } }));
+      const assetResponse = await env.ASSETS.fetch(new Request(assetUrl.toString(), { method: "GET" }));
+      const assetHeaders = new Headers(assetResponse.headers);
+      assetHeaders.set("Cache-Control", "no-store");
+      assetHeaders.set("Referrer-Policy", "no-referrer");
+      return new Response(assetResponse.body, { status: assetResponse.status, headers: assetHeaders });
     }
     return new Response("Not found", { status: 404, headers: { "Cache-Control": "no-store" } });
   }
