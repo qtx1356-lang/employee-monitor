@@ -23,32 +23,44 @@ from watchdog.events import FileSystemEventHandler
 # Use the native Windows API directly. This avoids depending on pywin32
 # being importable in the packaged executable.
 def get_foreground_process_name():
-    """Return the executable name owning the active desktop window."""
+    """Return the executable name owning the active desktop window, with diagnostics."""
     if os.name != "nt":
         return None
     try:
         user32 = ctypes.WinDLL("user32", use_last_error=True)
         kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+
         get_foreground = user32.GetForegroundWindow
         get_foreground.argtypes = []
         get_foreground.restype = wintypes.HWND
+        hwnd = get_foreground()
+        if not hwnd:
+            logging.warning("Foreground diagnostic: Windows returned no foreground window (possible non-interactive session).")
+            return None
+
+        pid = wintypes.DWORD(0)
         get_pid = user32.GetWindowThreadProcessId
         get_pid.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
         get_pid.restype = wintypes.DWORD
-        hwnd = get_foreground()
-        if not hwnd:
-            return None
-        pid = wintypes.DWORD(0)
-        get_pid(hwnd, ctypes.byref(pid))
+        thread_id = get_pid(hwnd, ctypes.byref(pid))
         if not pid.value:
+            logging.warning("Foreground diagnostic: window handle %s returned no process ID (thread %s).", hwnd, thread_id)
             return None
+
         try:
-            return psutil.Process(pid.value).name()
-        except (psutil.Error, OSError):
-            # Fallback for processes whose metadata is restricted.
+            proc = psutil.Process(pid.value)
+            name = proc.name()
+            logging.info("Foreground diagnostic: hwnd=%s pid=%s session=%s app=%s", hwnd, pid.value, proc.environ().get("SESSIONNAME", "unknown") if pid.value == os.getpid() else "n/a", name)
+            return name
+        except (psutil.Error, OSError) as exc:
+            logging.warning("Foreground diagnostic: cannot read process %s via psutil: %s; trying Windows process API.", pid.value, exc)
             PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-            handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid.value)
+            open_process = kernel32.OpenProcess
+            open_process.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+            open_process.restype = wintypes.HANDLE
+            handle = open_process(PROCESS_QUERY_LIMITED_INFORMATION, False, pid.value)
             if not handle:
+                logging.warning("Foreground diagnostic: OpenProcess failed for pid=%s, Windows error=%s.", pid.value, ctypes.get_last_error())
                 return None
             try:
                 size = wintypes.DWORD(32768)
@@ -57,7 +69,10 @@ def get_foreground_process_name():
                 query.argtypes = [wintypes.HANDLE, wintypes.DWORD, wintypes.LPWSTR, ctypes.POINTER(wintypes.DWORD)]
                 query.restype = wintypes.BOOL
                 if query(handle, 0, buffer, ctypes.byref(size)):
-                    return os.path.basename(buffer.value)
+                    name = os.path.basename(buffer.value)
+                    logging.info("Foreground diagnostic: hwnd=%s pid=%s app=%s (Windows API fallback)", hwnd, pid.value, name)
+                    return name
+                logging.warning("Foreground diagnostic: QueryFullProcessImageNameW failed for pid=%s, Windows error=%s.", pid.value, ctypes.get_last_error())
             finally:
                 kernel32.CloseHandle(handle)
         return None
