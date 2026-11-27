@@ -241,7 +241,7 @@ async function handleApi(request: Request, env: Env): Promise<Response> {
 
     if (method === "GET" && path === "/api/admin/sessions") {
       const day = url.searchParams.get("date") || new Date().toISOString().slice(0, 10);
-      if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(day)) return json({ detail: "date must be YYYY-MM-DD" }, 400);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return json({ detail: "date must be YYYY-MM-DD" }, 400);
       const rows = await env.DB.prepare(
         "SELECT s.id, d.employee_name AS employee, d.device_name AS device, s.started_at, s.ended_at, s.last_heartbeat, s.active_seconds, s.end_reason FROM sessions s JOIN devices d ON d.id = s.device_id WHERE substr(s.started_at, 1, 10) = ? ORDER BY s.started_at DESC"
       ).bind(day).all();
