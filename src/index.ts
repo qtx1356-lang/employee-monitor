@@ -130,6 +130,18 @@ async function handleApi(request: Request, env: Env): Promise<Response> {
     if (!device) return json({ detail: "Unknown, missing, or revoked device token." }, 401);
     const now = new Date().toISOString();
     if (path === "/api/session/start") {
+      // A short agent restart/reinstall should not be mistaken for a PC shutdown.
+      // Resume a session that was automatically recovered within the last 10 minutes.
+      const recent = await env.DB.prepare(
+        "SELECT id, started_at FROM sessions WHERE device_id = ? AND ended_at IS NOT NULL AND end_reason = 'recovered' AND last_heartbeat >= datetime('now', '-10 minutes') ORDER BY id DESC LIMIT 1"
+      ).bind(device.id).first<{id:number; started_at:string}>();
+      if (recent) {
+        await env.DB.batch([
+          env.DB.prepare("UPDATE sessions SET ended_at = NULL, end_reason = NULL, last_heartbeat = ? WHERE id = ?").bind(now, recent.id),
+          env.DB.prepare("UPDATE devices SET last_seen = ? WHERE id = ?").bind(now, device.id)
+        ]);
+        return json({ started: true, resumed: true, started_at: recent.started_at });
+      }
       await env.DB.batch([
         env.DB.prepare("UPDATE sessions SET ended_at = COALESCE(ended_at, last_heartbeat), end_reason = COALESCE(end_reason, 'recovered') WHERE device_id = ? AND ended_at IS NULL").bind(device.id),
         env.DB.prepare("INSERT INTO sessions (device_id, started_at, last_heartbeat, active_seconds) VALUES (?, ?, ?, 0)").bind(device.id, now, now),
