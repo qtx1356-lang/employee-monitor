@@ -23,11 +23,14 @@ from watchdog.events import FileSystemEventHandler
 # Use the native Windows API directly. This avoids depending on pywin32
 # being importable in the packaged executable.
 def get_foreground_process_name():
+    """Return the executable name owning the active desktop window."""
     if os.name != "nt":
         return None
     try:
         user32 = ctypes.WinDLL("user32", use_last_error=True)
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
         get_foreground = user32.GetForegroundWindow
+        get_foreground.argtypes = []
         get_foreground.restype = wintypes.HWND
         get_pid = user32.GetWindowThreadProcessId
         get_pid.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
@@ -36,10 +39,30 @@ def get_foreground_process_name():
         if not hwnd:
             return None
         pid = wintypes.DWORD(0)
-        if not get_pid(hwnd, ctypes.byref(pid)) or not pid.value:
+        get_pid(hwnd, ctypes.byref(pid))
+        if not pid.value:
             return None
-        return psutil.Process(pid.value).name()
-    except (OSError, psutil.Error, AttributeError, ValueError):
+        try:
+            return psutil.Process(pid.value).name()
+        except (psutil.Error, OSError):
+            # Fallback for processes whose metadata is restricted.
+            PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+            handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid.value)
+            if not handle:
+                return None
+            try:
+                size = wintypes.DWORD(32768)
+                buffer = ctypes.create_unicode_buffer(size.value)
+                query = kernel32.QueryFullProcessImageNameW
+                query.argtypes = [wintypes.HANDLE, wintypes.DWORD, wintypes.LPWSTR, ctypes.POINTER(wintypes.DWORD)]
+                query.restype = wintypes.BOOL
+                if query(handle, 0, buffer, ctypes.byref(size)):
+                    return os.path.basename(buffer.value)
+            finally:
+                kernel32.CloseHandle(handle)
+        return None
+    except (OSError, AttributeError, ValueError):
+        logging.exception("Could not identify the foreground application")
         return None
 
 def get_idle_seconds():
@@ -137,24 +160,40 @@ class Agent:
     def sample_app(self):
         # Sample frequently so short application switches are not missed.
         now = time.time()
-        interval = max(2, min(int(self.cfg.get("app_sample_seconds", 5)), 30))
+        interval = max(2, min(int(self.cfg.get("app_sample_seconds", 3)), 30))
         if now - self.last_app_time < interval:
             return
         self.last_app_time = now
-        # Report application process start/exit transitions by process name only.
-        # System and monitor processes are excluded; no window titles or content.
+
+        # Read the active desktop window on every sample. This is the primary
+        # signal for apps such as Windows 11 Notepad, which may be hosted or
+        # launched differently from classic desktop applications.
+        app = self.foreground_app()
+        ignored_foreground = {"EmployeeMonitorAgent.exe", "cmd.exe", "powershell.exe", "conhost.exe"}
+        if app and app.lower() not in {name.lower() for name in ignored_foreground} and app != self.last_app:
+            self.last_app = app
+            logging.info("Foreground application detected: %s", app)
+            self.send_events([{
+                "event_type": "application_foreground",
+                "app_name": app,
+                "details": "Active application process name only; no window title or content collected",
+                "occurred_at": utc_now()
+            }])
+
+        # Also report process start/exit transitions. Inspect each process
+        # independently so one protected Windows process cannot stop the scan.
         ignored = {"system", "registry", "smss.exe", "csrss.exe", "wininit.exe",
                    "services.exe", "lsass.exe", "svchost.exe", "runtimebroker.exe",
-                   "employeeMonitorAgent.exe".lower(), "cmd.exe", "powershell.exe",
+                   "employeemonitoragent.exe", "cmd.exe", "powershell.exe",
                    "conhost.exe", "taskhostw.exe", "dwm.exe"}
         current = set()
-        try:
-            for proc in psutil.process_iter(["name"]):
+        for proc in psutil.process_iter(["name"]):
+            try:
                 name = proc.info.get("name")
                 if name and name.lower() not in ignored:
                     current.add(name)
-        except (psutil.Error, OSError):
-            pass
+            except (psutil.Error, OSError, AttributeError):
+                continue
         for name in sorted(current - self.running_apps):
             self.send_events([{"event_type": "application_opened", "app_name": name,
                                "details": "Application process started; process name only",
@@ -164,21 +203,6 @@ class Agent:
                                "details": "Application process exited; process name only",
                                "occurred_at": utc_now()}])
         self.running_apps = current
-        app = self.foreground_app()
-        if not app:
-            return
-        # Do not report the monitor itself or its launcher shell as employee work.
-        ignored = {"EmployeeMonitorAgent.exe", "cmd.exe", "powershell.exe", "conhost.exe"}
-        if app.lower() in {name.lower() for name in ignored}:
-            return
-        if app != self.last_app:
-            self.last_app = app
-            self.send_events([{
-                "event_type": "application_foreground",
-                "app_name": app,
-                "details": "Foreground application process name only; no window title or content collected",
-                "occurred_at": utc_now()
-            }])
 
 class WorkFolderHandler(FileSystemEventHandler):
     def __init__(self, agent):
