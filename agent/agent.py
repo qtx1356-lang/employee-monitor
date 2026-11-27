@@ -23,7 +23,7 @@ from watchdog.events import FileSystemEventHandler
 # Use the native Windows API directly. This avoids depending on pywin32
 # being importable in the packaged executable.
 def get_foreground_process_name():
-    """Return the executable name owning the active desktop window, with diagnostics."""
+    """Return the active desktop application name and log safe diagnostics."""
     if os.name != "nt":
         return None
     try:
