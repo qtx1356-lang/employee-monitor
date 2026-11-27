@@ -50,7 +50,7 @@ def get_foreground_process_name():
         try:
             proc = psutil.Process(pid.value)
             name = proc.name()
-            logging.info("Foreground diagnostic: hwnd=%s pid=%s session=%s app=%s", hwnd, pid.value, proc.environ().get("SESSIONNAME", "unknown") if pid.value == os.getpid() else "n/a", name)
+            logging.info("Foreground diagnostic: hwnd=%s pid=%s app=%s", hwnd, pid.value, name)
             return name
         except (psutil.Error, OSError) as exc:
             logging.warning("Foreground diagnostic: cannot read process %s via psutil: %s; trying Windows process API.", pid.value, exc)
