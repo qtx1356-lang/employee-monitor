@@ -195,29 +195,10 @@ class Agent:
                 "occurred_at": utc_now()
             }])
 
-        # Also report process start/exit transitions. Inspect each process
-        # independently so one protected Windows process cannot stop the scan.
-        ignored = {"system", "registry", "smss.exe", "csrss.exe", "wininit.exe",
-                   "services.exe", "lsass.exe", "svchost.exe", "runtimebroker.exe",
-                   "employeemonitoragent.exe", "cmd.exe", "powershell.exe",
-                   "conhost.exe", "taskhostw.exe", "dwm.exe"}
-        current = set()
-        for proc in psutil.process_iter(["name"]):
-            try:
-                name = proc.info.get("name")
-                if name and name.lower() not in ignored:
-                    current.add(name)
-            except (psutil.Error, OSError, AttributeError):
-                continue
-        for name in sorted(current - self.running_apps):
-            self.send_events([{"event_type": "application_opened", "app_name": name,
-                               "details": "Application process started; process name only",
-                               "occurred_at": utc_now()}])
-        for name in sorted(self.running_apps - current):
-            self.send_events([{"event_type": "application_closed", "app_name": name,
-                               "details": "Application process exited; process name only",
-                               "occurred_at": utc_now()}])
-        self.running_apps = current
+        # Deliberately do not enumerate all Windows processes. Background services
+        # (for example printer, audio, and update services) are not applications
+        # the employee actively opened. Foreground sampling above is the only
+        # source of application activity.
 
 class WorkFolderHandler(FileSystemEventHandler):
     def __init__(self, agent):
