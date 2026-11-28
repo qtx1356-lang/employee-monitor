@@ -28,6 +28,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: EmployeeMonitor-FileMonitor-ETW-Test
-          path: publish/FileMonitor.exe
+          path: publish/
           if-no-files-found: error
           retention-days: 30
