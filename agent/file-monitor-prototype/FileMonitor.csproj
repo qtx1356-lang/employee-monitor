@@ -10,5 +10,24 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="3.1.21" />
+    <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent.SupportFiles" Version="1.0.23" />
   </ItemGroup>
+
+  <!-- TraceEvent's kernel ETW controller uses architecture-specific native support files. -->
+  <Target Name="CopyTraceEventNativeFilesToBuild" AfterTargets="Build">
+    <ItemGroup>
+      <TraceEventNativeFiles Include="$(TraceEventSupportFilesBase)native\**\*.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(TraceEventNativeFiles)"
+          DestinationFiles="@(TraceEventNativeFiles->'$(TargetDir)%(RecursiveDir)%(FileName)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+  <Target Name="CopyTraceEventNativeFilesToPublish" AfterTargets="Publish">
+    <ItemGroup>
+      <TraceEventNativeFiles Include="$(TraceEventSupportFilesBase)native\**\*.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(TraceEventNativeFiles)"
+          DestinationFiles="@(TraceEventNativeFiles->'$(PublishDir)%(RecursiveDir)%(FileName)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
 </Project>
