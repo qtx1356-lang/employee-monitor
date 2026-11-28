@@ -19,6 +19,7 @@ internal sealed record OpenRecord(
 internal static class Program
 {
     private static readonly ConcurrentDictionary<ulong, OpenRecord> OpenFiles = new();
+    private static readonly ConcurrentDictionary<ulong, string> FileNames = new();
     private static readonly object WriteLock = new();
     private static string LogPath = "";
 
@@ -58,6 +59,9 @@ internal static class Program
                 KernelTraceEventParser.Keywords.FileIO |
                 KernelTraceEventParser.Keywords.FileIOInit);
 
+            // Keep the kernel FileIO name map as a fallback: the name event and create event
+            // are separate ETW records and may arrive in either order during rundown.
+            session.Source.Kernel.FileIOName += OnFileName;
             session.Source.Kernel.FileIOCreate += OnFileOpen;
             session.Source.Kernel.FileIOCleanup += OnFileCleanup;
 
@@ -73,14 +77,34 @@ internal static class Program
         }
     }
 
+    private static void OnFileName(FileIONameTraceData data)
+    {
+        try
+        {
+            if (data.FileKey != 0 && !string.IsNullOrWhiteSpace(data.FileName))
+                FileNames[data.FileKey] = data.FileName;
+        }
+        catch (Exception ex)
+        {
+            Write(new { event_type = "diagnostic_error", message = "FileIOName: " + ex.Message, occurred_at = DateTime.UtcNow });
+        }
+    }
+
     private static void OnFileOpen(FileIOCreateTraceData data)
     {
         try
         {
-            var path = data.FileName;
             var fileObject = data.FileObject;
-            if (string.IsNullOrWhiteSpace(path) || fileObject == 0)
+            if (fileObject == 0)
                 return;
+            var path = data.FileName;
+            if (string.IsNullOrWhiteSpace(path) && FileNames.TryGetValue(fileObject, out var mappedPath))
+                path = mappedPath;
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                Write(new { event_type = "file_open_unresolved", file_object = $"0x{fileObject:X}", process_id = data.ProcessID, app_name = SafeProcessName(data.ProcessID, data.ProcessName), occurred_at = data.TimeStamp.ToUniversalTime() });
+                return;
+            }
 
             // Ignore directory handles, but do not restrict file extensions or folders.
             if ((((int)data.CreateOptions) & 0x1) != 0 ||
