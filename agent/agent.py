@@ -185,15 +185,26 @@ class Agent:
         # launched differently from classic desktop applications.
         app = self.foreground_app()
         ignored_foreground = {"EmployeeMonitorAgent.exe", "cmd.exe", "powershell.exe", "conhost.exe"}
-        if app and app.lower() not in {name.lower() for name in ignored_foreground} and app != self.last_app:
-            self.last_app = app
-            logging.info("Foreground application detected: %s", app)
-            self.send_events([{
-                "event_type": "application_foreground",
-                "app_name": app,
-                "details": "Active application process name only; no window title or content collected",
-                "occurred_at": utc_now()
-            }])
+        if app and app.lower() not in {name.lower() for name in ignored_foreground}:
+            # Record a change immediately, then add a lightweight presence event
+            # every 60 seconds while the same application remains in the foreground.
+            # This keeps Recent activity visibly current without collecting titles,
+            # browser tabs, keystrokes, screenshots, or application content.
+            changed = app != self.last_app
+            keepalive_due = now - getattr(self, "last_app_event_time", 0) >= 60
+            if changed or keepalive_due:
+                self.last_app = app
+                self.last_app_event_time = now
+                details = ("Active application process name only; no window title or content collected"
+                           if changed else
+                           "Application remains in the active foreground; process name only")
+                logging.info("Foreground application %s: %s", "detected" if changed else "still active", app)
+                self.send_events([{
+                    "event_type": "application_foreground",
+                    "app_name": app,
+                    "details": details,
+                    "occurred_at": utc_now()
+                }])
 
         # Deliberately do not enumerate all Windows processes. Background services
         # (for example printer, audio, and update services) are not applications
