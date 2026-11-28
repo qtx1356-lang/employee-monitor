@@ -19,7 +19,6 @@ internal sealed record OpenRecord(
 internal static class Program
 {
     private static readonly ConcurrentDictionary<ulong, OpenRecord> OpenFiles = new();
-    private static readonly ConcurrentDictionary<ulong, string> FileNames = new();
     private static readonly object WriteLock = new();
     private static string LogPath = "";
 
@@ -59,9 +58,9 @@ internal static class Program
                 KernelTraceEventParser.Keywords.FileIO |
                 KernelTraceEventParser.Keywords.FileIOInit);
 
-            // Keep the kernel FileIO name map as a fallback: the name event and create event
-            // are separate ETW records and may arrive in either order during rundown.
-            session.Source.Kernel.FileIOName += OnFileName;
+            // FileIOCreate carries the path directly in its FileName payload.
+            // FileIOName uses FileKey (a name-table key), not FileObject, so do
+            // not incorrectly correlate those two identifiers.
             session.Source.Kernel.FileIOCreate += OnFileOpen;
             session.Source.Kernel.FileIOCleanup += OnFileCleanup;
 
@@ -77,21 +76,6 @@ internal static class Program
         }
     }
 
-    private static void OnFileName(FileIONameTraceData data)
-    {
-        try
-        {
-            // FileIOName identifies the name by FileObject (not FileKey).
-            // FileIOCreate and FileIOCleanup are correlated using this same FileObject.
-            if (data.FileObject != 0 && !string.IsNullOrWhiteSpace(data.FileName))
-                FileNames[(ulong)data.FileObject] = data.FileName;
-        }
-        catch (Exception ex)
-        {
-            Write(new { event_type = "diagnostic_error", message = "FileIOName: " + ex.Message, occurred_at = DateTime.UtcNow });
-        }
-    }
-
     private static void OnFileOpen(FileIOCreateTraceData data)
     {
         try
@@ -99,11 +83,8 @@ internal static class Program
             var fileObject = data.FileObject;
             if (fileObject == 0)
                 return;
-            // Create events provide OpenPath. If it is empty, resolve the same
-            // FileObject through the FileIOName event map.
-            var path = data.OpenPath;
-            if (string.IsNullOrWhiteSpace(path) && FileNames.TryGetValue(fileObject, out var mappedPath))
-                path = mappedPath;
+            // FileIOCreateTraceData exposes the create-event path as FileName.
+            var path = data.FileName;
             if (string.IsNullOrWhiteSpace(path))
             {
                 Write(new { event_type = "file_open_unresolved", file_object = $"0x{fileObject:X}", process_id = data.ProcessID, app_name = SafeProcessName(data.ProcessID, data.ProcessName), occurred_at = data.TimeStamp.ToUniversalTime() });
