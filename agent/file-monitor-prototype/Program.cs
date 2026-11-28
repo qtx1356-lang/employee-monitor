@@ -81,8 +81,10 @@ internal static class Program
     {
         try
         {
-            if (data.FileKey != 0 && !string.IsNullOrWhiteSpace(data.FileName))
-                FileNames[data.FileKey] = data.FileName;
+            // FileIOName identifies the name by FileObject (not FileKey).
+            // FileIOCreate and FileIOCleanup are correlated using this same FileObject.
+            if (data.FileObject != 0 && !string.IsNullOrWhiteSpace(data.FileName))
+                FileNames[(ulong)data.FileObject] = data.FileName;
         }
         catch (Exception ex)
         {
@@ -97,7 +99,9 @@ internal static class Program
             var fileObject = data.FileObject;
             if (fileObject == 0)
                 return;
-            var path = data.FileName;
+            // Create events provide OpenPath. If it is empty, resolve the same
+            // FileObject through the FileIOName event map.
+            var path = data.OpenPath;
             if (string.IsNullOrWhiteSpace(path) && FileNames.TryGetValue(fileObject, out var mappedPath))
                 path = mappedPath;
             if (string.IsNullOrWhiteSpace(path))
