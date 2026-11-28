@@ -4,6 +4,7 @@ using System.Security.Principal;
 using System.Text.Json;
 using Microsoft.Diagnostics.Tracing;
 using Microsoft.Diagnostics.Tracing.Parsers;
+using Microsoft.Diagnostics.Tracing.Parsers.Kernel;
 using Microsoft.Diagnostics.Tracing.Session;
 
 namespace EmployeeMonitor.FileMonitorPrototype;
