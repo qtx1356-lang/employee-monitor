@@ -19,6 +19,7 @@ internal sealed record OpenRecord(
 internal static class Program
 {
     private static readonly ConcurrentDictionary<ulong, OpenRecord> OpenFiles = new();
+    private static readonly ConcurrentDictionary<(ulong FileObject, string Operation), byte> LoggedIo = new();
     private static readonly object WriteLock = new();
     private static string LogPath = "";
 
@@ -62,6 +63,8 @@ internal static class Program
             // FileIOName uses FileKey (a name-table key), not FileObject, so do
             // not incorrectly correlate those two identifiers.
             session.Source.Kernel.FileIOCreate += OnFileOpen;
+            session.Source.Kernel.FileIORead += OnFileRead;
+            session.Source.Kernel.FileIOWrite += OnFileWrite;
             session.Source.Kernel.FileIOCleanup += OnFileCleanup;
 
             Console.WriteLine("ETW session started. Open and close test documents now.");
@@ -122,12 +125,52 @@ internal static class Program
         }
     }
 
+    // Read/write events provide a second path-resolution signal. Log only the first
+    // read and first write for each file object to keep this diagnostic log bounded.
+    private static void OnFileRead(FileIOReadWriteTraceData data) => LogFileIo(data, "file_read_activity");
+
+    private static void OnFileWrite(FileIOReadWriteTraceData data) => LogFileIo(data, "file_write_activity");
+
+    private static void LogFileIo(FileIOReadWriteTraceData data, string eventType)
+    {
+        try
+        {
+            var fileObject = data.FileObject;
+            var path = data.FileName;
+            if (fileObject == 0 || string.IsNullOrWhiteSpace(path))
+                return;
+
+            var operation = eventType == "file_read_activity" ? "read" : "write";
+            if (!LoggedIo.TryAdd((fileObject, operation), 0))
+                return;
+
+            Write(new
+            {
+                event_type = eventType,
+                file_object = $"0x{fileObject:X}",
+                process_id = data.ProcessID,
+                app_name = SafeProcessName(data.ProcessID, data.ProcessName),
+                file_path = path,
+                io_size = data.IoSize,
+                occurred_at = data.TimeStamp.ToUniversalTime()
+            });
+        }
+        catch (Exception ex)
+        {
+            Write(new { event_type = "diagnostic_error", message = ex.Message, occurred_at = DateTime.UtcNow });
+        }
+    }
+
     private static void OnFileCleanup(FileIOSimpleOpTraceData data)
     {
         try
         {
             var fileObject = data.FileObject;
-            if (fileObject == 0 || !OpenFiles.TryRemove(fileObject, out var record))
+            if (fileObject == 0)
+                return;
+            LoggedIo.TryRemove((fileObject, "read"), out _);
+            LoggedIo.TryRemove((fileObject, "write"), out _);
+            if (!OpenFiles.TryRemove(fileObject, out var record))
                 return;
 
             Write(new
